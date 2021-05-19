@@ -1,4 +1,9 @@
 CADquery tutorial:
     https://pythonhosted.org/cadquery/examples.html
 CQ-editor: 
-    visualises CADquery code 
+    visualises CADquery code
+ExampleSliceAdjustCrop:
+    https://github.com/dgobbi/VTK/blob/master/Examples/ImageProcessing/Python/ImageInteractorReslice.py
+vedo.volume: 
+    https://vedo.embl.es/autodocs/_modules/vedo/volume.html#VolumeSlice
+
