@@ -48,8 +48,8 @@ class StingraySlice():
 
     def cropImage(self,cropSize: tuple):
         self.sitkImage=self.sitkImage[self.cropCentre[0]-self.cropSize[0][0]:self.cropCentre[0]+self.cropSize[0][1],
-        self.cropCentre[1]-self.cropSize[1][0]:self.cropCentre[1]-self.cropSize[1][1],
-        self.cropCentre[2]-self.cropSize[2][0]:self.cropCentre[2]-self.cropSize[2][1]]
+        self.cropCentre[1]-self.cropSize[1][0]:self.cropCentre[1]+self.cropSize[1][1],
+        self.cropCentre[2]-self.cropSize[2][0]:self.cropCentre[2]+self.cropSize[2][1]]
         self.sitkImage=sitk.GradientAnisotropicDiffusion(self.sitkImage)
     def showImage2DSlice(self):
         """
@@ -64,7 +64,11 @@ class StingraySlice():
         threshold in HU, and view boolean for visualization
         Returns:
         """
-         
+        otsuFilter = sitk.OtsuThresholdImageFilter()
+        #otsuFilter.SetInsideValue(0)
+        #otsuFilder.SetOutsideValue(1)
+        #seg = otsuFilter.Executre(sitk.Image)
+        #sitk.ConnectedThreshold() 
     def __get__(self)->sitk.Image:
         """Get stingray sitkImage
         Parameters:
