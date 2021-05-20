@@ -6,4 +6,5 @@ ExampleSliceAdjustCrop:
     https://github.com/dgobbi/VTK/blob/master/Examples/ImageProcessing/Python/ImageInteractorReslice.py
 vedo.volume: 
     https://vedo.embl.es/autodocs/_modules/vedo/volume.html#VolumeSlice
-
+xml:
+    https://stackoverflow.com/questions/38442807/python-convert-xml-to-numpy-array

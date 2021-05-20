@@ -19,7 +19,7 @@ class Profile:
         print("place holder")
     
     def writeProfile(self):
-        """write profileGraph to an xml
+        """write profileGraph TODO: to an xml/networkx graph depending on how convenient it is to store each centroid 
         """
         print("place holder")
 
