@@ -11,7 +11,6 @@ import os
 from vedo import volume,show
 from vedo.applications import Slicer2d,SlicerPlotter
 import vtk
-
 class StingraySlice():
     """
     StingraySlice contains methods for stingray ct scan IO and processing. Final objectiv
@@ -44,6 +43,8 @@ class StingraySlice():
             raise ValueError("File {0} {1}".format(fin,statusString))
         if self.imageType == ".mhd":
             self.sitkImage=sitk.ReadImage(fin[1])
+        if self.imageType == ".bmp":
+            self.sitkImage=self.__readBMPStack()
         else:
             self.sitkImage=self.__readDicomStack()
         imageSize_=self.sitkImage.GetSize()
@@ -63,6 +64,12 @@ class StingraySlice():
             print("crop out of bounds, user is prompted to __set__ object")
             return
         self.sitkImage=sitk.GradientAnisotropicDiffusion(self.sitkImage)
+    def orientateImage(self):
+        """
+        define a coordinate system then orientate image about this position
+        """
+        print("placeholder")
+        #TODO: [200~https://stackoverflow.com/questions/44457722/3d-image-rotation-simple-itk-python
     def showImage2DSlice(self):
         """Shows render of ct scan image
         """
@@ -76,7 +83,7 @@ class StingraySlice():
         vol = Volume(binaryImageArray)
         vol.addScalarBar3D()
         text1 = Text2D('Segmentation Volume',c='blue')
-        show((vol,text1)],N=2,azimuth=10)
+        show([(vol,text1)],N=2,azimuth=10)
     def selectSeed(self):
         """Select seed from ct scan
         """
@@ -133,9 +140,7 @@ class StingraySlice():
         if not finPath.is_dir():
             self.imageType=os.path.splitext(self.fin)[1]
             if self.imageType == ".mhd":
-                return(True, "")
-            if self.imageType == ".dcm":
-                return(True,"")
+                return(True, ".mhd")
             if self.imageType == ".zip":
                 import zipfile
                 tmpDir=tempfile.gettempdir()
@@ -157,17 +162,16 @@ class StingraySlice():
                         self.fin=tmpDir
                     tarRef.extractall(path=tmpDir)
             else:
-                return(False,"file type {0} not supported".format(self.imageType)) 
+                return(False,"file type {0} not supported".format(self.imageType))
+            return self.__checkFin()
         else:
-            fileNames=os.list.dir(fin)
-            self.imageType=os.path.splitext(fileNames[0])[0]
+            fileNames=os.listdir(self.fin)
+            self.imageType=os.path.splitext(fileNames[0])[1]
             if self.imageType == ".dcm" and len(fileNames)>1:
                 self.imageType=".dcmdir"
                 return(True,"")
-            if self.imageType == ".mhd":
-                return(True, "")
-            if self.imageType == ".dcm":
-                return(True,"")
+            if self.imageType == ".bmp":
+                return(True,"bmp")
             else:
                 return(False, "file type {0} not supported".format(self.imageType)) 
 
@@ -181,9 +185,27 @@ class StingraySlice():
         dicomNames = reader.GetGDCMSeriesFileNames(self.fin)
         reader.SetFileNames(dicomNames)
         return reader.Execute()
+    def __readBMPStack(self)->sitk.Image:
+        """Reads in a BMP stack folder
+        Parameters:
+        Returns:
+        sitk.image: stingray image
+        """
+        orderBySliceLoc = lambda slice: float(slice.GetMetaData('0020|1041'))
+        bmpFnames=os.listdir(self.fin)
+        sliceList=[]
+        for bmpFname in bmpFnames:
+            path_=os.path.join(self.fin,bmpFname)
+            sliceList.append(sitk.ReadImage(path_))
+        bmpFnames.sort(key=orderBySliceLoc,reverse=True)
+        volumeList = []
+        for slice in sliceList:
+            volumeList.append(sitk.GetArrayFromImage(slice)[0])
+        return sitk.GetImageFromArray(np.array(volumeList))
+        
 
 #if __name__ ==' __main__':
 print("running...")
 myStingray = StingraySlice()
-myStingray.__set__("/home/alex/projects/stingrayMold/images/ctStingray.zip")
+myStingray.__set__("/home/alex/projects/stingray/stingrayMold/images/ct/")
 print(myStingray.GetSize())
