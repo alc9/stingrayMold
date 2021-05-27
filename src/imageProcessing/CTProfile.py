@@ -1,12 +1,14 @@
 from skimage.filters import roberts
+from skimage import morphology
 import skimage.measure as measure
 import SimpleITK as sitk
 import numpy as np
 import matplotlib.pyplot as plt
 import skan
+import skan.draw as draw
 import logging 
 import networkx as nx
-
+np.seterr(divide='ignore',invalid='ignore')
 class CrossSectionProfile:
     """Profile takes a simpleITK image of stingray pectoral fin then performs operations to output a file defining the stingray fin profile
 
@@ -14,10 +16,11 @@ class CrossSectionProfile:
     :param sliceStride: stride between slices used during profiling 
     """
 
-    def  __init__(self,sitkImage):
+    def  __init__(self,sitkImage,spacing):
         self.sitkImageArray = sitk.GetArrayFromImage(sitkImage)
         self.profileArray = None
         self.centroid = None
+        self.spacing = spacing
         self.profileSkanGraph = None
         self.profileNxGraph = nx.Graph()
 
@@ -27,6 +30,15 @@ class CrossSectionProfile:
         """
         print("placeholder")
 
+    def __getCoordsArray(self)->np.array:
+        """
+        unpack coordinates into an array
+        """
+        arr = []
+        for path in range (self.profileSkanGraph.n_paths):
+            arr.append(self.profileSkanGraph.path_coordinates(path)[0].tolist())
+        return np.array(arr)
+   
     def __dumpSkanGraphToCSV(self):
         """Dumps points from skan graph to csv 
         """
@@ -36,20 +48,45 @@ class CrossSectionProfile:
             for it in enumerate(self.profileSkanGraph,axis=0):
                 writer.writerow([self.profileSkanGraph.path_coordinates(it)])
 
-    def __convertSkanCSRToGraphx(self):
-        """converts skan csr skeleton coordinates to nxgraph of coordinate points.
+    def __convertSkanCSRToGraphx(self,display):
+        """converts skan csr skeleton coordinates to nxgraph of coordinate points. 
+        Criteria for best set of points:
+            Minimum distance between head and tail: since incorrect paths typically occur outside of             the elliptical outline. 
+            Minimum sharp angle for a given distance between two nodes: to avoid a sharp outline
         """
+        if display:
+            #self.profileSkanGraph.skeleton_image.astype('float')
+            draw.overlay_skeleton_2d_class(self.profileSkanGraph)
+            #self.profileSkanGraph.skeleton_image.astype('bool')
+        #get branch statistics (N,{4,5}) IDs,length and branch type
+        dfBranchStats = skan.branch_statistics(self.profileSkanGraph.graph)
+        #delete spurious unwanted branches
+        for pathIndex in range(np.size(dfBranchStats,axis=0)):
+            if  int(dfBranchStats[pathIndex,3]) in (1,0,3):
+                self.__prunePath(pathIndex)
+        if display:
+            draw.overlay_skeleton_2d_class(self.profileSkanGraph)
+
         #used in array of int which are indices to subset
         #current node index is master
         masterNodeIdx = 0
         masterEdgeIdx = 0
-        #length of list of segment end points
+        dfBranchStats = skan.branch_statistics(self.profileSkanGraph.graph)
+        #get ID of all possibly candidates based on junction-junction branch type
+        candidateIDSet = set(branch[0] for branch in dfBranchStats if branch[2]==2)
         nCoordinates = self.profileSkanGraph.coordinates.shape[0]
         nodes = np.full((nCoordinates),np.nan)
+        #create sets for all possible routes
+        #TODO: determine end and start points for use in path length comparison
         for edgeIdx, path in enumerate(self.profileSkanGraph.paths_list()):
+            #path skipping conditions
+            if len(path) <3: 
+                continue
+            if int(float(path[-1])) in candidateIDSet is False:
+                print("false path")
+                continue
             srcPnt = path[0]
             dstPnt = path[-1]
-            print(len(path))
             x = float(self.profileSkanGraph.coordinates[srcPnt,0])
             y = float(self.profileSkanGraph.coordinates[srcPnt,1])
             #if not nan and a valid node e.g >= 0
@@ -66,14 +103,21 @@ class CrossSectionProfile:
                 self.profileNxGraph.add_node(srcNodeIdx)
                 self.profileNxGraph.add_edge(srcNodeIdx,masterEdgeIdx)
                 #self.profileNxGraph.add_edge(srcNodeIdx,object=self.profileSkanGraph.path_coordinates(edgeIdx))
+        #print(candidateIDSet)
+        if display:
+            draw.overlay_skeleton_2d_class(self.profileSkanGraph)
+
+
     def writeProfileToObj(self):
         """write profile
         """
         print(self.profileArray)
 
-    def showProfile(self):
+    def showProfile(self,arr=None):
+        if arr is None:
+            arr = self.profileArray
         fig,ax=plt.subplots()
-        ax.imshow(self.profileArray)
+        ax.imshow(arr)
         ax.grid()
         plt.show()
 
@@ -81,7 +125,7 @@ class CrossSectionProfile:
         np.savetxt("../profileData.csv", self.profileArray, delimiter=",")
 
     def leastSquaresFit(self):
-        """Minimize the sum of squares 
+        """Minimize the sum of square 
         """
         alpha = 5
         beta = 3 
@@ -150,47 +194,49 @@ class CrossSectionProfile:
         if(title):
             plt.title(title)
         plt.show()
-    def __removeCliques(self):
-        """This function removes cliques from the graph.
-        These are unwanted since we want a single route around
-        the outline of the profile.
         """
+    def __removeCliques(self):
         print("placeholder")
-
-    def __removeSmallTerminalEdges(self):
+        """
+    def __prunePath(self,pathIndex,dilate=False):
         """This function removes small terminal 
         edges from the skan.csr graph in an initial pruning
         step
         """
-        print("placeholder")
+        for coordinate in range(np.size(self.profileSkanGraph.path_coordinates(pathIndex),axis = 0)):
+            self.profileSkanGraph.skeleton_image[int(self.profileSkanGraph.path_coordinates(pathIndex)[coordinate,0]),int(self.profileSkanGraph.path_coordinates(pathIndex)[coordinate,1])]=False
+        if dilate:
+            self.profileSkanGraph=morphology.binary_dilation(self.profileSkanGraph.skeleton_image).astype('bool')
+        self.profileSkanGraph = skan.csr.Skeleton(self.profileSkanGraph.skeleton_image,spacing=self.spacing,source_image = self.sitkImageArray)
 
     def __dilateImage(self):
         """This function dilates the image to fill in gaps which occur
         after pruning
         """
         print("placeholder")
-
-    def __set__(self):
+    
+    def __set__(self,display = False):
         """sets profileArray
         """
+
         #X,Y=np.where(np.all(im==1,axis=2)) to get white pixels
         regionPropsStingray=measure.regionprops(self.sitkImageArray)
         if len(regionPropsStingray)==1:
             self.centroid = regionPropsStingray[0].centroid
             del(regionPropsStingray)
-        self.profileArray = roberts(self.sitkImageArray)
+        self.profileArray = roberts(self.sitkImageArray).astype('bool')
         #get image spacing 
-        imgspacing=sitk.ReadImage("/home/alex/projects/stingray/stingrayMold/images/segmentations/singleSliceUrobRHS.seg.nrrd")[0,:,:].GetSpacing()
         #get coordinate points and graph like structure
-        self.profileSkanGraph=skan.csr.Skeleton(self.profileArray,spacing =imgspacing)
+        self.profileSkanGraph=skan.csr.Skeleton(self.profileArray,spacing=self.spacing,source_image=self.sitkImageArray)
+        self.showProfile(self.__getCoordsArray()) 
+        draw.overlay_skeleton_2d_class(self.profileSkanGraph)
         #change datastructure to a more convenient structure
-        self.__convertSkanCSRToGraphx()
-
+        self.__convertSkanCSRToGraphx(display=display)
         #print(self.profileGraph.n_paths)
 
-img=sitk.ReadImage("/home/alex/projects/stingray/stingrayMold/images/segmentations/singleSliceUrobRHS.seg.nrrd")[0,:,:]
-obj=CrossSectionProfile(img)
-obj.__set__()
+img=sitk.ReadImage("/home/alex/projects/stingray/stingrayMold/images/segmentations/singleSliceUrobRHS.seg.nrrd")[0,:,:] # [0,:,:]
+obj=CrossSectionProfile(img,img.GetSpacing())
+obj.__set__(True)
 #obj.writeProfileToCSV()
 #obj.mirrorProfile()
 #obj.showProfile()
