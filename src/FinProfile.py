@@ -1,29 +1,114 @@
 import skan
+from skimage.util import invert
+from scipy.ndimage import binary_fill_holes
+from skimage import morphology
+from skimage.measure import label,regionprops,find_contours
+from skimage.transform import rotate
+from sklearn.preprocessing import normalize
 import SimpleITK as sitk
+import cv2 as cv
 import numpy as np
+import matplotlib as mpl
+import matplotlib.ticker
+from matplotlib.ticker import FormatStrFormatter
+from matplotlib import pyplot as plt
+from symfit import parameters,variables,Fit
+import pandas as pd
 class Profile:
     """
-    Profile takes a simpleITK image of stingray pectoral fin then performs operations to output an xml defining the stingray fin profile
-
-    :param sitkImage: binary array generated using StingraySlice() used for defining stingray fin profile
-    :param sliceStride: stride between slices used during profiling 
+    Takes in the segmentation sitkImage, orientated the image, generates array of
+    positions for the outlines, fits shape to aerofoil equation
+    :param sitkImage: binary image file name for slice of profile 
     """
-    def  __init__(self,sitkImage,sliceStride=1):
+    def  __init__(self,sitkImage,fname,rotate=True):
+        #image array
+        #N.B z,y,x
+        self.fname=fname
         self.sitkImageArray = sitk.GetArrayFromImage(sitkImage)
-        self.sliceStride = sliceStride
-        self.profileGraph = None
+        self.spacing=list(sitkImage.GetSpacing())[:-1]
+        self.origin=list(sitkImage.GetOrigin())[:-1]
+        self.sitkImageArray=np.squeeze(self.sitkImageArray,axis=0)
+        #self.sitkImageArray=np.swapaxes(self.sitkImageArray,0,1)
+        if rotate:
+            self.sitkImageArray=np.rot90(self.sitkImageArray) 
+        #array of from skan outline positions 
+        self.profile = None
+        #string equation of best fit
+        self.bestFitEq = None
+        #original region properties
+        self.regionProperties = None
 
     def showProfile(self):
         """show generated profile
+        f = lambda x,pos: str(x).rstrip('0').rstrip('.')
+        plt.rc('font', family='serif')
+        plt.rc('xtick', labelsize='x-small')
+        plt.rc('ytick', labelsize='x-small')
+        plt.rc('legend', fontsize=10)    # legend fontsize
+        """
+        fig = plt.figure(figsize=(6, 5))
+        ax = fig.add_subplot(1, 1, 1)
+        #plt.margins(x=0.0001,y=0.003)
+        ax.plot(self.profile["x"],self.profile["y"],'o',linestyle='None',marker="o",color="black")
+        #plt.savefig("self.fname",dpi=300)
+        plt.show()
+    def showImage(self):
+        """ shows sitk image"""
+        plt.imshow(self.sitkImageArray,cmap=plt.cm.gray,interpolation='nearest')
+        plt.show()
+    
+    def writeProfile(self):
+        """write profileGraph to csv file 
+        """
+        import pandas as pd
+        self.profile.to_csv("testingPositions.csv")
+ 
+    def writeBestFit(self):
+        """writes best fit equation
         """
         print("place holder")
     
-    def writeProfile(self):
-        """write profileGraph TODO: to an xml/networkx graph depending on how convenient it is to store each centroid 
+    def orientateImageArray(self):
+        """orientates fin 
         """
-        print("place holder")
+        #only one region, due to largest island algorithm 
+        self.regionProperties = regionprops(self.sitkImageArray)[0]
+        orientation=self.regionProperties.orientation
+        orientationDegrees=orientation*(180/np.pi)+90
+        self.regionProperties = regionprops(self.sitkImageArray)[0]
+        self.sitkImageArray=rotate(self.sitkImageArray,-orientationDegrees,resize=False)
+    def getSkanSkelCoords(self,skanSkel):
+        skelCoordsList=[]
+        for seg in range(skanSkel.n_paths):
+            skelCoords = skanSkel.path_coordinates(seg)
+            branchCoords=skelCoords[0]
+            skelCoordsList.append(skelCoords)
+        #return skelCoordsList
 
-    def __set__(self):
-        """sets profileGraph
+    def makeProfile(self,showRawSkel=True):
+        """makes profile for fin using skan
         """
-        print("profile graph")
+        kernel = np.ones((3,3),np.uint8)
+        rawSkel=cv.morphologyEx(self.sitkImageArray,cv.MORPH_GRADIENT,kernel)
+        rawSkel=cv.erode(np.float32(rawSkel),kernel,iterations=1).astype(bool)
+        if showRawSkel:
+            print("showing rawSkel")
+            plt.imshow(rawSkel,cmap=plt.cm.gray)
+            plt.show()
+        (rows,cols)=np.where(rawSkel==True)
+        # Initialize empty list of co-ordinates
+        skel_coords = []
+        # For each non-zero pixel...
+        for (r,c) in zip(rows,cols):
+            skel_coords.append((r,c))
+        self.profile=pd.DataFrame(np.array(skel_coords),columns=["y","x"])
+        self.profile["y"]=np.divide(self.profile["y"],np.max(self.profile["y"]))
+        self.profile["x"]=np.divide(self.profile["x"],np.max(self.profile["x"]))
+
+    def fitShape(self):
+        """
+        fits array of positions to aerofoil equation using symfit
+        https://en.wikipedia.org/wiki/NACA_airfoil
+        """
+        t,x=variables('t,x')
+        model={}
