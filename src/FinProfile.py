@@ -14,6 +14,7 @@ from matplotlib.ticker import FormatStrFormatter
 from matplotlib import pyplot as plt
 from symfit import parameters,variables,Fit
 import pandas as pd
+import re 
 class Profile:
     """
     Takes in the segmentation sitkImage, orientated the image, generates array of
@@ -33,8 +34,8 @@ class Profile:
             self.sitkImageArray=np.rot90(self.sitkImageArray) 
         #array of from skan outline positions 
         self.profile = None
-        #string equation of best fit
-        self.bestFitEq = None
+        #best fit results dict
+        self.resultsDict = {}
         #original region properties
         self.regionProperties = None
 
@@ -125,11 +126,12 @@ class Profile:
         fit=Fit(model,x=filteredDf["x"],y=filteredDf["y"])
         fitResult1=fit.execute()
         print(fitResult1)
+        t=fitResult1.value(t)
+        self.resultsDict.update({re.findall('[0-9]+',self.fname)[0]:{"t1":t}})
         if showResult:
             fig = plt.figure(figsize=(6, 5))
             ax = fig.add_subplot(1, 1, 1)
             x=filteredDf["x"]
-            t=fitResult1.value(t)
             print(type(x))
             #pd.DataFrame(5 * t * (0.2969 * (x**0.5) - 0.1260 * x - 0.3516 *(x**2)+  0.2843 * (x**3) - 0.1015 * (x**4))).to_csv("approxData.csv")
             yt =  5 * t * (0.2969 * (x**0.5) - 0.1260 * x - 0.3516 *(x**2)+  0.2843 * (x**3) - 0.1015 * (x**4))
@@ -145,11 +147,12 @@ class Profile:
         fit=Fit(model,x=filteredDf["x"],y=filteredDf["y"])
         fitResult2=fit.execute()
         print(fitResult2)
+        t=fitResult2.value(t)
+        self.resultsDict[re.findall('[0-9]+',self.fname)[0]].update({"t2":t})
         if showResult:
             fig = plt.figure(figsize=(6, 5))
             ax = fig.add_subplot(1, 1, 1)
             x=filteredDf["x"]
-            t=fitResult2.value(t)
             ax.plot(x,5 * t * 0.2969 * x**0.5 - 5 * t * 0.1260 * x - 5 * t * 0.3516 * x**2 + 5 * t * 0.2843 * x**3 - 5 * t * 0.1015 *x**4,'o',linestyle='None',marker="o",color="black")
             ax.plot(x,filteredDf["y"],'o',color="red")
             plt.show()
