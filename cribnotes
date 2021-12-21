@@ -8,3 +8,5 @@ vedo.volume:
     https://vedo.embl.es/autodocs/_modules/vedo/volume.html#VolumeSlice
 xml:
     https://stackoverflow.com/questions/38442807/python-convert-xml-to-numpy-array
+ct scan obtained from:
+    https://osf.io/ghe7x/

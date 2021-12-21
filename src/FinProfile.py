@@ -102,13 +102,56 @@ class Profile:
         for (r,c) in zip(rows,cols):
             skel_coords.append((r,c))
         self.profile=pd.DataFrame(np.array(skel_coords),columns=["y","x"])
+        #place zero position at centroid
+        #np.where(self.regionProperties.centroid)
+        self.profile["y"]=np.subtract(self.profile["y"],list(self.regionProperties.centroid)[0])
+        #self.profile["x"]=np.subtract(self.profile["x"],list(self.regionProperties.centroid)[1])
+        #scale data
         self.profile["y"]=np.divide(self.profile["y"],np.max(self.profile["y"]))
         self.profile["x"]=np.divide(self.profile["x"],np.max(self.profile["x"]))
 
-    def fitShape(self):
+    def fitShapeFourDigitSeries(self,showResult=False):
         """
         fits array of positions to aerofoil equation using symfit
         https://en.wikipedia.org/wiki/NACA_airfoil
+        takes top of image and bottom then takes the best r from the two
+        results
         """
-        t,x=variables('t,x')
-        model={}
+        x , y = variables('x,y')
+        t , r= parameters('t,r')
+        filteredDf=self.profile[(self.profile[["y"]]>=0).all(1)]
+        #cons=
+        model={y: 5 * t * ( 0.2969 * (x**0.5) - 0.1260 * x - 0.3516 * (x**2) + 0.2843 * (x**3) - 0.1015 * (x**4))}
+        fit=Fit(model,x=filteredDf["x"],y=filteredDf["y"])
+        fitResult1=fit.execute()
+        print(fitResult1)
+        if showResult:
+            fig = plt.figure(figsize=(6, 5))
+            ax = fig.add_subplot(1, 1, 1)
+            x=filteredDf["x"]
+            t=fitResult1.value(t)
+            print(type(x))
+            #pd.DataFrame(5 * t * (0.2969 * (x**0.5) - 0.1260 * x - 0.3516 *(x**2)+  0.2843 * (x**3) - 0.1015 * (x**4))).to_csv("approxData.csv")
+            yt =  5 * t * (0.2969 * (x**0.5) - 0.1260 * x - 0.3516 *(x**2)+  0.2843 * (x**3) - 0.1015 * (x**4))
+            ax.plot(x,yt,'o',linestyle='None',marker="o",color="black")
+            ax.plot(x,filteredDf["y"],'o',color="red")
+            plt.show()
+        #process data for the half  
+        filteredDf=self.profile[(self.profile[["y"]]<=0).all(1)]
+        filteredDf["y"]=np.absolute(filteredDf["y"])
+        x , y = variables('x,y')
+        t , p = parameters('t,p')
+        model={y: 5 * t * (0.2969 * x**0.5 - 0.1260 * x - 0.3516 * x**2 + 0.2843 * x**3 - 0.1015 * x**4)}
+        fit=Fit(model,x=filteredDf["x"],y=filteredDf["y"])
+        fitResult2=fit.execute()
+        print(fitResult2)
+        if showResult:
+            fig = plt.figure(figsize=(6, 5))
+            ax = fig.add_subplot(1, 1, 1)
+            x=filteredDf["x"]
+            t=fitResult2.value(t)
+            ax.plot(x,5 * t * 0.2969 * x**0.5 - 5 * t * 0.1260 * x - 5 * t * 0.3516 * x**2 + 5 * t * 0.2843 * x**3 - 5 * t * 0.1015 *x**4,'o',linestyle='None',marker="o",color="black")
+            ax.plot(x,filteredDf["y"],'o',color="red")
+            plt.show()
+
+
